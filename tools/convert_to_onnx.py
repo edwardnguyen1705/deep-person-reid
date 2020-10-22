@@ -15,6 +15,7 @@
 """
 
 import argparse
+import os
 from PIL import Image
 
 import numpy as np
@@ -27,6 +28,7 @@ from torchreid.models import build_model
 from torchreid.utils import load_pretrained_weights
 from torchreid.data.transforms import build_inference_transform
 from scripts.default_config import get_default_config, model_kwargs
+from fuse_conv_bn import fuse_module
 
 
 @parse_args('v', 'i', 'v', 'v', 'f', 'i')
@@ -84,14 +86,21 @@ def reset_config(cfg):
 def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config-file', type=str, default='',
+    parser.add_argument('--config-file',
+                        type=str,
+                        default='configs/face/face-reidentification-retail-0095.yaml',
                         help='Path to config file')
-    parser.add_argument('--output-name', type=str, default='model',
+    parser.add_argument('--output-name',
+                        type=str, default='face-reidentification-retail-0095-ft-with-mask.onnx',
                         help='Path to save ONNX model')
-    parser.add_argument('--opset', type=int, default=9)
-    parser.add_argument('--verbose', default=False, action='store_true',
+    parser.add_argument('--opset', type=int, default=10)
+    parser.add_argument('--verbose',
+                        default=False,
+                        action='store_true',
                         help='Verbose mode for onnx.export')
-    parser.add_argument('opts', default=None, nargs=argparse.REMAINDER,
+    parser.add_argument('opts',
+                        default=None,
+                        nargs=argparse.REMAINDER,
                         help='Modify config options using the command-line')
     args = parser.parse_args()
 
@@ -104,9 +113,15 @@ def main():
     cfg.freeze()
 
     num_classes = parse_num_classes(cfg.data.sources)
+    print("*********************")
+    print(num_classes)
     model = build_model(**model_kwargs(cfg, num_classes))
     load_pretrained_weights(model, cfg.model.load_weights)
     model.eval()
+
+    # fuse
+    model = fuse_module(model)
+    print(model)
 
     transform = build_inference_transform(
         cfg.data.height,
@@ -119,14 +134,16 @@ def main():
     input_blob = transform(input_img).unsqueeze(0)
 
     input_names = ['data']
-    output_names = ['reid_embedding']
-    dynamic_axes = {'data': {0: 'batch_size', 1: 'channels', 2: 'height', 3: 'width'},
+    output_names = ['output']
+    dynamic_axes = {'data':
+                    {0: 'batch_size', 1: 'channels', 2: 'height', 3: 'width'},
                     'reid_embedding': {0: 'batch_size', 1: 'dim'}}
 
     output_file_path = args.output_name
     if not args.output_name.endswith('.onnx'):
         output_file_path += '.onnx'
 
+    output_file_path = os.path.join(cfg.data.save_dir, output_file_path)
     register_op("group_norm", group_norm_symbolic, "", args.opset)
     with torch.no_grad():
         torch.onnx.export(
@@ -137,7 +154,6 @@ def main():
             export_params=True,
             input_names=input_names,
             output_names=output_names,
-            dynamic_axes=dynamic_axes,
             opset_version=args.opset,
             operator_export_type=torch.onnx.OperatorExportTypes.ONNX
         )
@@ -145,6 +161,9 @@ def main():
     net_from_onnx = onnx.load(output_file_path)
     try:
         onnx.checker.check_model(net_from_onnx)
+        print(
+            onnx.helper.printable_graph(net_from_onnx.graph)
+        )
         print('ONNX check passed.')
     except onnx.onnx_cpp2py_export.checker.ValidationError as ex:
         print('ONNX check failed: {}.'.format(ex))

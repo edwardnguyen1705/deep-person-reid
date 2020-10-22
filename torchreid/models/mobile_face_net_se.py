@@ -41,6 +41,7 @@ def make_activation(activation):
 
 class SELayer(nn.Module):
     """Implementation of the Squeeze-Excitaion layer from https://arxiv.org/abs/1709.01507"""
+
     def __init__(self, inplanes, squeeze_ratio=8, activation=nn.PReLU, size=None):
         super(SELayer, self).__init__()
         assert squeeze_ratio >= 1
@@ -65,6 +66,7 @@ class SELayer(nn.Module):
 
 class InvertedResidual(nn.Module):
     """Implementation of the modified Inverted residual block"""
+
     def __init__(self, in_channels, out_channels, stride, expand_ratio, outp_size=None):
         super(InvertedResidual, self).__init__()
         self.stride = stride
@@ -96,6 +98,7 @@ class InvertedResidual(nn.Module):
 
 class MobileFaceNet(nn.Module):
     """Implements modified MobileFaceNet from https://arxiv.org/abs/1804.07573"""
+
     def __init__(self,
                  num_classes,
                  feature=False,
@@ -106,7 +109,7 @@ class MobileFaceNet(nn.Module):
                  **kwargs):
         super(MobileFaceNet, self).__init__()
         assert feature_dim > 0
-        assert num_classes > 0
+        # assert num_classes > 0
         assert width_multiplier > 0
         self.feature = feature
         self.loss = loss
