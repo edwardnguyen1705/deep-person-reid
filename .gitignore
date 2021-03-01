@@ -143,3 +143,4 @@ log*
 checkpoints/
 *.pth
 *.tar
+*.sh
